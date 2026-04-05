@@ -23,7 +23,7 @@ export interface OAuthServer {
  * Gets the OAuth callback port from environment or default
  * Validates that the port is within valid range (1-65535)
  */
-function getOAuthCallbackPort(): number {
+export function getOAuthCallbackPort(): number {
   const DEFAULT_PORT = 8234;
   const envPort = process.env.OAUTH_CALLBACK_PORT;
 

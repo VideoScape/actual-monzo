@@ -11,6 +11,7 @@ import nock from 'nock';
 import { MonzoOAuthService } from '../../src/services/monzo-oauth-service';
 import * as oauthServer from '../../src/utils/oauth-server';
 import * as browserUtils from '../../src/utils/browser-utils';
+import inquirer from 'inquirer';
 
 // Mock filesystem
 vi.mock('fs/promises', () => ({
@@ -23,6 +24,9 @@ vi.mock('../../src/utils/browser-utils');
 
 // Mock OAuth server module
 vi.mock('../../src/utils/oauth-server');
+
+// Mock inquirer
+vi.mock('inquirer');
 
 describe('Integration: OAuth Denial Handling', () => {
   let mockServer: any;
@@ -45,6 +49,12 @@ describe('Integration: OAuth Denial Handling', () => {
       success: true,
       url: 'https://auth.monzo.com/oauth/authorize',
     });
+
+    // Mock inquirer to select browser mode
+    vi.mocked(inquirer.prompt).mockResolvedValue({ openMethod: 'browser' });
+
+    // Mock getOAuthCallbackPort
+    vi.mocked(oauthServer.getOAuthCallbackPort).mockReturnValue(3000);
 
     // Default: mock createOAuthCallbackServer to return mockServer
     vi.mocked(oauthServer.createOAuthCallbackServer).mockResolvedValue(mockServer);

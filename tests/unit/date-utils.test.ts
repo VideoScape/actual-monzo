@@ -61,8 +61,11 @@ describe('Unit: Date Utilities', () => {
     });
 
     it('should include transactions from today when end date is today', () => {
-      const today = new Date().toISOString().split('T')[0];
-      const range = parseDateRange('2025-10-01', today);
+      const today = new Date();
+      const startDate = new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000);
+      const todayStr = today.toISOString().split('T')[0];
+      const startStr = startDate.toISOString().split('T')[0];
+      const range = parseDateRange(startStr, todayStr);
 
       // End date should be set to end of day to include all of today's transactions
       expect(range.end.getUTCHours()).toBe(23);

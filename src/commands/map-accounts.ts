@@ -34,6 +34,7 @@ async function fetchMonzoAccounts(accessToken: string): Promise<MonzoAccount[]> 
  */
 async function fetchActualAccounts(config: Config): Promise<ActualAccount[]> {
   let initialized = false;
+  let budgetOpened = false;
 
   try {
     // Resolve data directory path (expand ~ and relative paths)
@@ -90,6 +91,7 @@ async function fetchActualAccounts(config: Config): Promise<ActualAccount[]> {
     // Download budget and get accounts with suppressed console output
     const accounts = await suppressConsole(async () => {
       await actualApi.downloadBudget(budgetId);
+      budgetOpened = true;
       return await actualApi.getAccounts();
     });
 
@@ -98,8 +100,11 @@ async function fetchActualAccounts(config: Config): Promise<ActualAccount[]> {
     let errorMessage = 'Unknown error';
 
     if (error instanceof Error) {
-      errorMessage = error.message;
+      errorMessage = error.message || error.toString();
+    } else if (typeof error === 'string') {
+      errorMessage = error;
     } else if (typeof error === 'object' && error !== null) {
+      // Actual Budget API sometimes throws plain objects like { reason: '...', meta: {...} }
       errorMessage = JSON.stringify(error, null, 2);
     } else {
       errorMessage = String(error);
@@ -111,7 +116,9 @@ async function fetchActualAccounts(config: Config): Promise<ActualAccount[]> {
         `Data directory: ${config.actualBudget.dataDirectory}`
     );
   } finally {
-    if (initialized) {
+    // Only call shutdown if a budget was successfully opened,
+    // otherwise _fullSync crashes trying to sync a non-existent budget
+    if (initialized && budgetOpened) {
       try {
         if (typeof actualApi.shutdown === 'function') {
           await actualApi.shutdown();
