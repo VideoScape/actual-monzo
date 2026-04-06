@@ -18,6 +18,7 @@ import { saveConfig } from '../utils/config-manager.js';
 import * as actualApi from '@actual-app/api';
 import * as path from 'path';
 import type { Ora } from 'ora';
+import { checkServerCompatibility } from '../utils/actual-version-check.js';
 
 export class ImportService {
   private readonly monzoClient: MonzoApiClient;
@@ -132,6 +133,12 @@ export class ImportService {
           dataDir = dataDir.replace('~', process.env.HOME ?? '');
         } else if (dataDir.startsWith('.')) {
           dataDir = path.resolve(process.cwd(), dataDir);
+        }
+
+        // Pre-flight version compatibility check
+        const versionCheck = await checkServerCompatibility(refreshedConfig.actualBudget.serverUrl);
+        if (!versionCheck.compatible) {
+          throw new Error(versionCheck.message);
         }
 
         await actualApi.init({

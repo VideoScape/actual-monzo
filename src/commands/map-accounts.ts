@@ -12,6 +12,7 @@ import { MonzoApiClient } from '../services/monzo-api-client.js';
 import { suppressConsole } from '../utils/cli-utils.js';
 import * as actualApi from '@actual-app/api';
 import * as path from 'path';
+import { checkServerCompatibility } from '../utils/actual-version-check.js';
 import type { AccountMapping } from '../types/import.js';
 import type { Config } from '../utils/config-schema.js';
 import type { MonzoAccount } from '../types/monzo.js';
@@ -43,6 +44,12 @@ async function fetchActualAccounts(config: Config): Promise<ActualAccount[]> {
       dataDir = dataDir.replace('~', process.env.HOME ?? '');
     } else if (dataDir.startsWith('.')) {
       dataDir = path.resolve(process.cwd(), dataDir);
+    }
+
+    // Pre-flight version compatibility check
+    const versionCheck = await checkServerCompatibility(config.actualBudget.serverUrl);
+    if (!versionCheck.compatible) {
+      throw new Error(versionCheck.message);
     }
 
     // Initialize Actual Budget with suppressed console output

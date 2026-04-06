@@ -8,6 +8,7 @@ import { SetupErrorCode } from '../types/setup';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import { suppressConsole } from '../utils/cli-utils.js';
+import { checkServerCompatibility } from '../utils/actual-version-check.js';
 
 export interface ConnectionValidationResult {
   success: boolean;
@@ -66,6 +67,18 @@ export class ActualClient {
               `  - Parent directory exists\n` +
               `  - Disk space is available`,
             originalError: mkdirError instanceof Error ? mkdirError : new Error(String(mkdirError)),
+          },
+        };
+      }
+
+      // Pre-flight version compatibility check
+      const versionCheck = await checkServerCompatibility(serverUrl);
+      if (!versionCheck.compatible) {
+        return {
+          success: false,
+          error: {
+            code: SetupErrorCode.CONFIGURATION_ERROR,
+            message: versionCheck.message!,
           },
         };
       }
