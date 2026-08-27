@@ -12,3 +12,4 @@ NoNewPrivileges=true
 PrivateTmp=true
 UMask=0077
 LogsDirectory=actual-monzo
+LogsDirectoryMode=0700
