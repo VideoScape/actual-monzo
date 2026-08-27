@@ -16,10 +16,17 @@ import { checkServerCompatibility } from '../utils/actual-version-check.js';
 import type { AccountMapping } from '../types/import.js';
 import type { Config } from '../utils/config-schema.js';
 import type { MonzoAccount } from '../types/monzo.js';
+import { getMonzoAccountDisplayName } from '../utils/account-names.js';
 
 interface ActualAccount {
   id: string;
   name: string;
+  closed?: boolean;
+}
+
+interface ActualAccountResult {
+  accounts: ActualAccount[];
+  budgetId: string;
 }
 
 /**
@@ -33,7 +40,7 @@ async function fetchMonzoAccounts(accessToken: string): Promise<MonzoAccount[]> 
 /**
  * Fetch Actual Budget accounts
  */
-async function fetchActualAccounts(config: Config): Promise<ActualAccount[]> {
+async function fetchActualAccounts(config: Config): Promise<ActualAccountResult> {
   let initialized = false;
   let budgetOpened = false;
 
@@ -74,9 +81,11 @@ async function fetchActualAccounts(config: Config): Promise<ActualAccount[]> {
     initialized = true;
 
     // Use the first budget (or prompt user if multiple)
-    let budgetId = uniqueBudgets[0].groupId;
+    let budgetId =
+      uniqueBudgets.find(budget => budget.groupId === config.actualBudget.budgetId)?.groupId ??
+      uniqueBudgets[0].groupId;
 
-    if (uniqueBudgets.length > 1) {
+    if (uniqueBudgets.length > 1 && !config.actualBudget.budgetId) {
       const budgetChoices = uniqueBudgets.map(b => ({
         name: `${b.name} (${b.groupId})`,
         value: b.groupId,
@@ -102,7 +111,7 @@ async function fetchActualAccounts(config: Config): Promise<ActualAccount[]> {
       return await actualApi.getAccounts();
     });
 
-    return accounts;
+    return { accounts, budgetId };
   } catch (error) {
     let errorMessage = 'Unknown error';
 
@@ -147,14 +156,18 @@ export async function runAccountMappingFlow(config: Config): Promise<Config> {
 
   // Fetch accounts from both services
   console.log(chalk.cyan('Fetching Monzo accounts...'));
-  const monzoAccounts = await fetchMonzoAccounts(config.monzo.accessToken!);
+  const monzoAccounts = (await fetchMonzoAccounts(config.monzo.accessToken!)).filter(
+    account => !account.closed
+  );
 
   if (monzoAccounts.length === 0) {
     throw new Error('No Monzo accounts found. Please check your Monzo configuration.');
   }
 
   console.log(chalk.cyan('Fetching Actual Budget accounts...'));
-  const actualAccounts = await fetchActualAccounts(config);
+  const actualResult = await fetchActualAccounts(config);
+  const actualAccounts = actualResult.accounts.filter(account => !account.closed);
+  config.actualBudget.budgetId = actualResult.budgetId;
 
   if (actualAccounts.length === 0) {
     throw new Error('No Actual Budget accounts found. Please check your Actual Budget setup.');
@@ -169,20 +182,8 @@ export async function runAccountMappingFlow(config: Config): Promise<Config> {
   // Build account mappings interactively
   const mappings: AccountMapping[] = [];
 
-  // Helper to generate friendly account name
-  const getAccountDisplayName = (account: MonzoAccount): string => {
-    const ownerName = account.owners?.[0]?.preferred_name ?? 'Unknown';
-    const accountType =
-      account.product_type === 'flex'
-        ? 'Flex'
-        : account.type === 'uk_retail_joint'
-          ? 'Joint Account'
-          : 'Current Account';
-    return `${ownerName} - ${accountType}`;
-  };
-
   for (const monzoAccount of monzoAccounts) {
-    const displayName = getAccountDisplayName(monzoAccount);
+    const displayName = getMonzoAccountDisplayName(monzoAccount);
     console.log(chalk.bold(`\nMonzo Account: ${chalk.cyan(displayName)} (${monzoAccount.id})`));
 
     const { shouldMap } = await inquirer.prompt([

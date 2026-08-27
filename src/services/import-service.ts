@@ -28,6 +28,8 @@ import * as actualApi from '@actual-app/api';
 import * as path from 'path';
 import type { Ora } from 'ora';
 import { checkServerCompatibility } from '../utils/actual-version-check.js';
+import { getMonzoAccountDisplayName } from '../utils/account-names.js';
+import { validateActualMappings } from '../utils/mapping-validation.js';
 
 export class ImportService {
   private readonly monzoClient: MonzoApiClient;
@@ -123,6 +125,23 @@ export class ImportService {
     // Refresh token if expired or expiring soon
     const refreshedConfig = await this.refreshTokenIfNeeded(config);
 
+    const monzoAccounts = await this.monzoClient.getAccounts(refreshedConfig.monzo.accessToken!);
+    let accountLabelsChanged = false;
+    for (const mapping of refreshedConfig.accountMappings ?? []) {
+      const account = monzoAccounts.find(candidate => candidate.id === mapping.monzoAccountId);
+      if (!account || account.closed) {
+        continue;
+      }
+      const displayName = getMonzoAccountDisplayName(account);
+      if (mapping.monzoAccountName !== displayName) {
+        mapping.monzoAccountName = displayName;
+        accountLabelsChanged = true;
+      }
+    }
+    if (accountLabelsChanged) {
+      await saveConfig(refreshedConfig);
+    }
+
     const session: ImportSession = {
       startTime: new Date(),
       dateRange,
@@ -180,6 +199,13 @@ export class ImportService {
             candidate => candidate.groupId === refreshedConfig.actualBudget.budgetId
           ) ?? uniqueBudgets[0];
         await actualApi.downloadBudget(budget.groupId);
+
+        const actualAccounts = (await actualApi.getAccounts()) as Array<{
+          id: string;
+          name: string;
+          closed?: boolean;
+        }>;
+        validateActualMappings(actualAccounts, mappings, refreshedConfig.potMappings ?? []);
 
         const payees = (await actualApi.getPayees()) as Array<{
           id: string;

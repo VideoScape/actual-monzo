@@ -29,7 +29,7 @@ async function createCLI(): Promise<Command> {
     // Fallback if package.json can't be read
     packageJson = {
       name: 'actual-monzo',
-      version: '0.6.0-pot.1',
+      version: '0.6.0-pot.2',
       description: 'CLI tool to import Monzo transactions into Actual Budget',
     };
   }
@@ -37,7 +37,7 @@ async function createCLI(): Promise<Command> {
   // Configure main program
   program
     .name(packageJson.name ?? 'actual-monzo')
-    .version(packageJson.version ?? '0.6.0-pot.1')
+    .version(packageJson.version ?? '0.6.0-pot.2')
     .description(
       packageJson.description ?? 'CLI tool to import Monzo transactions into Actual Budget'
     )

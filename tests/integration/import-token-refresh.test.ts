@@ -75,7 +75,7 @@ describe('Integration: Import Token Refresh', () => {
     const newAccessToken = 'eyJhbGciOiJFUzI1NiIsInR5cCI6IkpXVCJ9.new_access_token_refreshed';
     const newRefreshToken = 'eyJhbGciOiJFUzI1NiIsInR5cCI6IkpXVCJ9.new_refresh_token_test';
     nock(MONZO_API_BASE)
-      .post('/oauth2/token', (body) => {
+      .post('/oauth2/token', body => {
         return (
           body.grant_type === 'refresh_token' &&
           body.refresh_token === 'eyJhbGciOiJFUzI1NiIsInR5cCI6IkpXVCJ9.valid_refresh_token_test'
@@ -89,6 +89,11 @@ describe('Integration: Import Token Refresh', () => {
       });
 
     // Mock transactions API call with new token
+    nock(MONZO_API_BASE)
+      .get('/accounts')
+      .matchHeader('Authorization', `Bearer ${newAccessToken}`)
+      .reply(200, { accounts: [] });
+
     nock(MONZO_API_BASE)
       .get('/transactions')
       .query(true)
@@ -113,9 +118,7 @@ describe('Integration: Import Token Refresh', () => {
 
     // Verify config was updated with new tokens
     const { load } = await import('js-yaml');
-    const updatedConfig = load(
-      vol.readFileSync(CONFIG_PATH, 'utf-8') as string
-    ) as Config;
+    const updatedConfig = load(vol.readFileSync(CONFIG_PATH, 'utf-8') as string) as Config;
 
     expect(updatedConfig.monzo.accessToken).toBe(newAccessToken);
     expect(updatedConfig.monzo.refreshToken).toBe(newRefreshToken);
@@ -165,12 +168,7 @@ describe('Integration: Import Token Refresh', () => {
     };
 
     await expect(
-      importService.executeImport(
-        expiredConfig,
-        expiredConfig.accountMappings!,
-        dateRange,
-        true
-      )
+      importService.executeImport(expiredConfig, expiredConfig.accountMappings!, dateRange, true)
     ).rejects.toThrow(/invalid_grant|expired|re-authenticate/i);
   });
 
@@ -206,9 +204,20 @@ describe('Integration: Import Token Refresh', () => {
 
     // Mock transactions API call with existing token (no refresh should occur)
     nock(MONZO_API_BASE)
+      .get('/accounts')
+      .matchHeader(
+        'Authorization',
+        `Bearer eyJhbGciOiJFUzI1NiIsInR5cCI6IkpXVCJ9.valid_access_token_test`
+      )
+      .reply(200, { accounts: [] });
+
+    nock(MONZO_API_BASE)
       .get('/transactions')
       .query(true)
-      .matchHeader('Authorization', `Bearer eyJhbGciOiJFUzI1NiIsInR5cCI6IkpXVCJ9.valid_access_token_test`)
+      .matchHeader(
+        'Authorization',
+        `Bearer eyJhbGciOiJFUzI1NiIsInR5cCI6IkpXVCJ9.valid_access_token_test`
+      )
       .reply(200, {
         transactions: [],
       });
@@ -222,12 +231,7 @@ describe('Integration: Import Token Refresh', () => {
       end: new Date('2025-10-02'),
     };
 
-    await importService.executeImport(
-      validConfig,
-      validConfig.accountMappings!,
-      dateRange,
-      true
-    );
+    await importService.executeImport(validConfig, validConfig.accountMappings!, dateRange, true);
 
     // Verify refresh endpoint was NOT called
     expect(refreshSpy.isDone()).toBe(false);
