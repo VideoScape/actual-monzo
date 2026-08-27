@@ -10,6 +10,7 @@ import { loadConfig } from '../utils/config-manager.js';
 import { parseDateRange } from '../utils/date-utils.js';
 import { ImportService } from '../services/import-service.js';
 import { suppressConsole } from '../utils/cli-utils.js';
+import { loadHistorySnapshot, removeHistorySnapshot } from '../utils/history-snapshot.js';
 import type { Config } from '../utils/config-schema.js';
 import type { AccountMapping, ImportSession } from '../types/import.js';
 
@@ -21,6 +22,8 @@ interface ImportOptions {
   end: string;
   account?: string;
   dryRun: boolean;
+  snapshot?: string;
+  keepSnapshot: boolean;
 }
 
 export function importSessionHasErrors(session: ImportSession): boolean {
@@ -178,11 +181,28 @@ async function importAction(options: ImportOptions): Promise<void> {
     // Validate configuration
     validateImportConfig(config);
 
-    // Parse and validate date range
-    const dateRange = parseDateRange(options.start, options.end);
+    const snapshot = options.snapshot ? await loadHistorySnapshot(options.snapshot) : undefined;
+
+    // A captured snapshot owns its exact date range; ordinary imports use CLI dates.
+    const dateRange = snapshot
+      ? { start: new Date(snapshot.start), end: new Date(snapshot.end) }
+      : parseDateRange(options.start, options.end);
 
     // Filter account mappings if --account specified
     const accountMappings = filterAccountMappings(config.accountMappings!, options.account);
+    const prefetchedTransactions = snapshot
+      ? new Map(
+          accountMappings.map(mapping => {
+            const transactions = snapshot.transactionsByAccount[mapping.monzoAccountId];
+            if (!transactions) {
+              throw new Error(
+                `History snapshot does not contain mapped account ${mapping.monzoAccountName}`
+              );
+            }
+            return [mapping.monzoAccountId, transactions] as const;
+          })
+        )
+      : undefined;
 
     // Initialize import service
     const importService = new ImportService();
@@ -198,7 +218,8 @@ async function importAction(options: ImportOptions): Promise<void> {
         accountMappings,
         dateRange,
         options.dryRun,
-        spinner
+        spinner,
+        prefetchedTransactions
       );
     });
 
@@ -211,6 +232,11 @@ async function importAction(options: ImportOptions): Promise<void> {
     if (importSessionHasErrors(session)) {
       console.error(chalk.red('\nImport completed with errors; see the summary above.'));
       process.exit(1);
+    }
+
+    if (options.snapshot && !options.keepSnapshot && !options.dryRun) {
+      await removeHistorySnapshot(options.snapshot);
+      console.log(chalk.dim('Secure history snapshot removed after successful import.'));
     }
 
     process.exit(0);
@@ -235,5 +261,7 @@ export const importCommand = new Command('import')
   .option('-s, --start <date>', 'Start date (YYYY-MM-DD)', calculateDefaultStart())
   .option('-e, --end <date>', 'End date (YYYY-MM-DD)', calculateDefaultEnd())
   .option('-a, --account <id>', 'Import specific Monzo account ID')
+  .option('--snapshot <path>', 'import a previously captured complete-history snapshot')
+  .option('--keep-snapshot', 'retain the snapshot after a successful import', false)
   .option('--dry-run', 'Preview import without making changes', false)
   .action(importAction);

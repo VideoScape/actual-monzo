@@ -6,6 +6,7 @@ import { createSetupCommand } from './setup.js';
 import { importCommand } from './import.js';
 import { mapAccountsCommand } from './map-accounts.js';
 import { mapPotsCommand } from './map-pots.js';
+import { captureHistoryCommand } from './capture-history.js';
 import { readFile } from 'fs/promises';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
@@ -29,7 +30,7 @@ async function createCLI(): Promise<Command> {
     // Fallback if package.json can't be read
     packageJson = {
       name: 'actual-monzo',
-      version: '0.6.0-pot.3',
+      version: '0.6.0-pot.4',
       description: 'CLI tool to import Monzo transactions into Actual Budget',
     };
   }
@@ -37,7 +38,7 @@ async function createCLI(): Promise<Command> {
   // Configure main program
   program
     .name(packageJson.name ?? 'actual-monzo')
-    .version(packageJson.version ?? '0.6.0-pot.3')
+    .version(packageJson.version ?? '0.6.0-pot.4')
     .description(
       packageJson.description ?? 'CLI tool to import Monzo transactions into Actual Budget'
     )
@@ -66,6 +67,9 @@ async function createCLI(): Promise<Command> {
 
   // Add Monzo Pot mapping command
   program.addCommand(mapPotsCommand);
+
+  // Add time-sensitive complete-history capture command
+  program.addCommand(captureHistoryCommand);
 
   // Add import command
   program.addCommand(importCommand);

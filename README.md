@@ -4,7 +4,8 @@ Automated synchronization between Monzo bank accounts, Monzo Pots, and Actual Bu
 
 This is the VideoScape-maintained fork. It is developed independently and adds first-class
 Monzo Pot accounts, linked Current-to-Pot transfers, linked Pot-to-Pot transfers, and one-time
-Pot balance reconciliation.
+Pot balance reconciliation. It can also capture complete Monzo history during the short
+post-authentication access window and import that secure snapshot later.
 
 ## Features
 
@@ -14,6 +15,8 @@ Pot balance reconciliation.
 - 🏺 **First-class Monzo Pots** - Create a dedicated on-budget Actual account for every open Pot
 - 🔁 **Linked Transfers** - Preserve Current ↔ Pot and Pot ↔ Pot movements as Actual transfers
 - ⚖️ **Pot Balance Reconciliation** - Initialize new Pot accounts to their live Monzo balance
+- 🗄️ **Complete History Bootstrap** - Capture all Monzo history immediately after reauthentication
+- 🏺 **Archived Pot History** - Preserve movements involving deleted Pots during a full import
 - 💾 **Persistent Configuration** - Global config stored in `~/.actual-monzo/` with secure permissions (chmod 600)
 - 🌍 **Global Installation** - Install once, run from anywhere
 - 📋 **Import History** - Automatic logging of all imports in `~/.actual-monzo/logs/`
@@ -123,6 +126,28 @@ Options:
 - `--end <date>` - Import transactions until this date (YYYY-MM-DD, default: today)
 - `--account <id>` - Import only this Monzo account ID
 - `--dry-run` - Preview import without making changes
+- `--snapshot <path>` - Import a secure snapshot created by `capture-history`
+- `--keep-snapshot` - Keep a snapshot after a successful import instead of deleting it
+
+### Capture complete Monzo history
+
+Monzo exposes complete transaction history for only a short period immediately after interactive
+authentication. Capture it before resetting or rebuilding an Actual budget:
+
+```bash
+actual-monzo capture-history
+```
+
+The command reuses the configured OAuth client, refreshes only the Monzo session credentials,
+downloads every mapped account concurrently, maps open and deleted Pots, and writes a mode `0600`
+snapshot. It prints the exact follow-up command:
+
+```bash
+actual-monzo import --snapshot /path/printed/by/capture-history.json
+```
+
+The snapshot is removed automatically after a successful live import. It is retained after a
+failed import so the capture can be retried without another time-sensitive authentication.
 
 ### Scheduled import with systemd
 
@@ -151,6 +176,12 @@ on-budget Actual account:
 
 ```bash
 actual-monzo map-pots
+```
+
+For a complete-history bootstrap, include deleted Pots so their historic transfers remain linked:
+
+```bash
+actual-monzo map-pots --include-deleted
 ```
 
 Run `map-pots` again after creating a new Pot in Monzo. Historical mappings are retained so an
@@ -214,7 +245,7 @@ setupCompletedAt: '2025-10-01T12:05:00.000Z'
 ```
 actual-monzo/
 ├── src/
-│   ├── commands/       # CLI commands (setup, import, map-accounts, map-pots)
+│   ├── commands/       # CLI commands (setup, capture-history, import, account/Pot mapping)
 │   ├── services/       # Business logic (OAuth, API clients)
 │   ├── types/          # TypeScript type definitions
 │   └── utils/          # Utilities (config, OAuth server, browser)
@@ -428,7 +459,7 @@ MIT
 - [Monzo API Docs](https://docs.monzo.com/)
 - [Actual Budget](https://actualbudget.org/)
 - [Feature Specs](specs/) - Detailed specifications
-- [GitHub Issues](https://github.com/alexcrawford/actual-monzo/issues)
+- [GitHub Issues](https://github.com/VideoScape/actual-monzo/issues)
 
 ---
 

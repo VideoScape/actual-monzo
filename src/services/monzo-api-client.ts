@@ -8,6 +8,9 @@ import type { OAuthTokenResponse, WhoAmIResponse } from '../types/oauth.js';
 import type { MonzoAccount, MonzoPot, MonzoTransaction } from '../types/monzo.js';
 
 const MONZO_API_BASE = 'https://api.monzo.com';
+// Monzo rejects transaction queries spanning more than 8,760 hours (one year).
+// Stay below that ceiling so leap years and boundary rounding cannot exceed it.
+const MONZO_TRANSACTION_RANGE_MS = 364 * 24 * 60 * 60 * 1000;
 
 export interface TokenExchangeParams {
   code: string;
@@ -218,86 +221,94 @@ export class MonzoApiClient {
     accessToken: string
   ): Promise<MonzoTransaction[]> {
     const allTransactions: MonzoTransaction[] = [];
-    let currentSince = since;
-    let hasMorePages = true;
-    let retryCount = 0;
     const maxRetries = 3;
     const pageLimit = 100;
+    const rangeStart = new Date(since).getTime();
+    const rangeEnd = new Date(before).getTime();
 
-    while (hasMorePages) {
-      try {
-        const params: Record<string, string | number> = {
-          account_id: accountId,
-          since: currentSince,
-          before,
-          'expand[]': 'merchant',
-          limit: pageLimit,
-        };
+    if (!Number.isFinite(rangeStart) || !Number.isFinite(rangeEnd) || rangeStart >= rangeEnd) {
+      throw new Error('Invalid Monzo transaction date range');
+    }
 
-        const response = await axios.get(`${MONZO_API_BASE}/transactions`, {
-          headers: {
-            Authorization: `Bearer ${accessToken}`,
-          },
-          params,
-        });
+    for (
+      let chunkStart = rangeStart;
+      chunkStart < rangeEnd;
+      chunkStart += MONZO_TRANSACTION_RANGE_MS
+    ) {
+      const chunkEnd = Math.min(chunkStart + MONZO_TRANSACTION_RANGE_MS, rangeEnd);
+      let currentSince = new Date(chunkStart).toISOString();
+      const currentBefore = new Date(chunkEnd).toISOString();
+      let hasMorePages = true;
+      let retryCount = 0;
 
-        const transactions = response.data.transactions ?? [];
-        allTransactions.push(...transactions);
+      while (hasMorePages) {
+        try {
+          const params: Record<string, string | number> = {
+            account_id: accountId,
+            since: currentSince,
+            before: currentBefore,
+            'expand[]': 'merchant',
+            limit: pageLimit,
+          };
 
-        // Check if we got a full page - if so, there might be more
-        if (transactions.length === pageLimit) {
-          // Use the last transaction's timestamp as the new 'since' for next page
-          const lastTransaction = transactions[transactions.length - 1];
-          const lastTimestamp = new Date(lastTransaction.created);
+          const response = await axios.get(`${MONZO_API_BASE}/transactions`, {
+            headers: {
+              Authorization: `Bearer ${accessToken}`,
+            },
+            params,
+          });
 
-          // Add 1 millisecond to avoid fetching the same transaction again
-          lastTimestamp.setMilliseconds(lastTimestamp.getMilliseconds() + 1);
-          currentSince = lastTimestamp.toISOString();
+          const transactions = response.data.transactions ?? [];
+          allTransactions.push(...transactions);
 
-          // Continue to next page
-          hasMorePages = true;
-        } else {
-          // Got fewer than limit, this is the last page
-          hasMorePages = false;
-        }
-
-        retryCount = 0; // Reset retry count on success
-      } catch (error) {
-        if (axios.isAxiosError(error)) {
-          const axiosError = error as AxiosError;
-
-          // Handle 401 Unauthorized - token expired
-          if (axiosError.response?.status === 401) {
-            throw new Error(
-              'Monzo access token expired. Please re-authenticate:\n' + '  actual-monzo setup'
-            );
+          // A full page may have more results inside this date chunk.
+          if (transactions.length === pageLimit) {
+            const lastTransaction = transactions[transactions.length - 1];
+            const nextSince = new Date(lastTransaction.created).getTime() + 1;
+            hasMorePages = nextSince < chunkEnd;
+            if (hasMorePages) currentSince = new Date(nextSince).toISOString();
+          } else {
+            hasMorePages = false;
           }
 
-          // Handle 429 Rate Limit - exponential backoff
-          if (axiosError.response?.status === 429) {
-            if (retryCount < maxRetries) {
-              const backoffDelay = Math.pow(2, retryCount) * 1000; // 1s, 2s, 4s
-              await this.sleep(backoffDelay);
-              retryCount++;
-              continue; // Retry same request
+          retryCount = 0;
+        } catch (error) {
+          if (axios.isAxiosError(error)) {
+            const axiosError = error as AxiosError;
+
+            // Handle 401 Unauthorized - token expired
+            if (axiosError.response?.status === 401) {
+              throw new Error(
+                'Monzo access token expired. Please re-authenticate:\n' + '  actual-monzo setup'
+              );
             }
-            throw new Error('Monzo API rate limit exceeded. Please try again later.');
-          }
 
-          // Handle 500 Server Error - single retry
-          if (axiosError.response?.status === 500) {
-            if (retryCount === 0) {
-              await this.sleep(2000);
-              retryCount++;
-              continue; // Retry once
+            // Handle 429 Rate Limit - exponential backoff
+            if (axiosError.response?.status === 429) {
+              if (retryCount < maxRetries) {
+                const backoffDelay = Math.pow(2, retryCount) * 1000; // 1s, 2s, 4s
+                await this.sleep(backoffDelay);
+                retryCount++;
+                continue; // Retry same request
+              }
+              throw new Error('Monzo API rate limit exceeded. Please try again later.');
             }
-            throw new Error('Monzo API is currently unavailable. Please try again later.');
+
+            // Handle 500 Server Error - single retry
+            if (axiosError.response?.status === 500) {
+              if (retryCount === 0) {
+                await this.sleep(2000);
+                retryCount++;
+                continue; // Retry once
+              }
+              throw new Error('Monzo API is currently unavailable. Please try again later.');
+            }
+
+            throw new Error(`Monzo API error: ${axiosError.message}`);
           }
 
-          throw new Error(`Monzo API error: ${axiosError.message}`);
+          throw error;
         }
-
-        throw error;
       }
     }
 

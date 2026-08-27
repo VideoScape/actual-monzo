@@ -236,4 +236,70 @@ describe('Integration: Import Token Refresh', () => {
     // Verify refresh endpoint was NOT called
     expect(refreshSpy.isDone()).toBe(false);
   });
+
+  it('uses a captured snapshot without calling the time-limited transactions endpoint', async () => {
+    const validConfig: Config = {
+      monzo: {
+        clientId: 'oauth2client_0000000000000test123456',
+        clientSecret: 'mnzconf_secret123456789012345678901234567890',
+        accessToken: 'snapshot-access-token-with-sufficient-length',
+        refreshToken: 'snapshot-refresh-token-with-sufficient-length',
+        tokenExpiresAt: new Date(Date.now() + 10 * 60 * 60 * 1000).toISOString(),
+        authorizedAt: new Date().toISOString(),
+      },
+      actualBudget: {
+        serverUrl: 'http://localhost:5006',
+        password: 'test-password',
+        dataDirectory: './data',
+      },
+      accountMappings: [
+        {
+          monzoAccountId: 'acc_00000Ayn0000000000000',
+          monzoAccountName: 'Test Account',
+          actualAccountId: '12345678-1234-5678-9234-567812345678',
+          actualAccountName: 'Test Actual',
+        },
+      ],
+    };
+
+    nock(MONZO_API_BASE)
+      .get('/accounts')
+      .matchHeader('Authorization', 'Bearer snapshot-access-token-with-sufficient-length')
+      .reply(200, { accounts: [] });
+
+    const unexpectedTransactionsCall = nock(MONZO_API_BASE)
+      .get('/transactions')
+      .query(true)
+      .reply(500, { error: 'snapshot should have prevented this request' });
+
+    const prefetched = new Map([
+      [
+        'acc_00000Ayn0000000000000',
+        [
+          {
+            id: 'tx_snapshot123',
+            account_id: 'acc_00000Ayn0000000000000',
+            amount: -1234,
+            created: '2020-01-02T10:00:00.000Z',
+            settled: '2020-01-02T10:00:01.000Z',
+            currency: 'GBP',
+            description: 'Snapshot purchase',
+            category: 'shopping',
+          },
+        ],
+      ],
+    ]);
+
+    const session = await new ImportService().executeImport(
+      validConfig,
+      validConfig.accountMappings!,
+      { start: new Date('2000-01-01'), end: new Date('2026-08-27') },
+      true,
+      undefined,
+      prefetched
+    );
+
+    expect(session.totalTransactions).toBe(1);
+    expect(unexpectedTransactionsCall.isDone()).toBe(false);
+  });
 });

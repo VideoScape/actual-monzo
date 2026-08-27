@@ -10,6 +10,7 @@ import type {
   FailedAccountRecord,
   ActualTransaction,
   PotMapping,
+  MonzoTransaction,
 } from '../types/import.js';
 import type { Config } from '../utils/config-schema.js';
 import { MonzoApiClient } from './monzo-api-client.js';
@@ -120,7 +121,8 @@ export class ImportService {
     mappings: AccountMapping[],
     dateRange: DateRange,
     dryRun: boolean,
-    spinner?: Ora
+    spinner?: Ora,
+    prefetchedTransactions?: ReadonlyMap<string, MonzoTransaction[]>
   ): Promise<ImportSession> {
     // Refresh token if expired or expiring soon
     const refreshedConfig = await this.refreshTokenIfNeeded(config);
@@ -254,12 +256,14 @@ export class ImportService {
           const since = dateRange.start.toISOString();
           const before = dateRange.end.toISOString();
 
-          const monzoTransactions = await this.monzoClient.getTransactions(
-            mapping.monzoAccountId,
-            since,
-            before,
-            refreshedConfig.monzo.accessToken!
-          );
+          const monzoTransactions =
+            prefetchedTransactions?.get(mapping.monzoAccountId) ??
+            (await this.monzoClient.getTransactions(
+              mapping.monzoAccountId,
+              since,
+              before,
+              refreshedConfig.monzo.accessToken!
+            ));
 
           const transactionsByActualAccount = new Map<string, ActualTransaction[]>();
           const potToPotTransactionsByActualAccount = new Map<string, ActualTransaction[]>();
@@ -387,7 +391,13 @@ export class ImportService {
               }
               await actualApi.addTransactions(
                 actualAccountId,
-                newTransactions.map(({ account: _account, ...transaction }) => transaction),
+                newTransactions.map(transaction => {
+                  const { account, ...transactionWithoutAccount } = transaction;
+                  if (account !== actualAccountId) {
+                    throw new Error('Pot transfer was assigned to the wrong Actual account');
+                  }
+                  return transactionWithoutAccount;
+                }),
                 { runTransfers: true }
               );
               session.totalTransactions += newTransactions.length;

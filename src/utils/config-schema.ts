@@ -26,6 +26,7 @@ export const PotMappingSchema = z.object({
     .regex(/^acc_[a-zA-Z0-9]{16,}$/, 'Monzo account ID must match format acc_XXXXXXXX...'),
   actualAccountId: z.string().uuid('Actual Budget account ID must be valid UUID'),
   actualAccountName: z.string().min(1, 'Actual Budget account name cannot be empty'),
+  deleted: z.boolean().optional(),
   balanceInitializedAt: z
     .string()
     .datetime({ message: 'balanceInitializedAt must be ISO 8601 format' })

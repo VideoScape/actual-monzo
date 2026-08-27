@@ -38,6 +38,7 @@ export interface PotMapping {
   monzoAccountId: string;
   actualAccountId: string;
   actualAccountName: string;
+  deleted?: boolean;
   balanceInitializedAt?: string;
 }
 

@@ -1,6 +1,6 @@
 {
   "name": "actual-monzo",
-  "version": "0.6.0-pot.3",
+  "version": "0.6.0-pot.4",
   "description": "CLI tool to import Monzo transactions into Actual Budget",
   "type": "module",
   "main": "dist/index.js",
@@ -27,14 +27,13 @@
     "prepublishOnly": "pnpm build && pnpm test:run"
   },
   "dependencies": {
-    "@actual-app/api": "^26.4.0",
-    "axios": "^1.12.2",
+    "@actual-app/api": "^26.8.1",
+    "axios": "^1.20.0",
     "chalk": "^5.3.0",
     "commander": "^11.1.0",
-    "conf": "^12.0.0",
     "date-fns": "^2.30.0",
     "inquirer": "^9.2.12",
-    "js-yaml": "^4.1.0",
+    "js-yaml": "^4.3.1",
     "open": "^10.2.0",
     "ora": "^7.0.1",
     "zod": "^4.1.11"
@@ -59,11 +58,6 @@
     "node": ">=18.0.0"
   },
   "packageManager": "pnpm@10.17.1",
-  "pnpm": {
-    "onlyBuiltDependencies": [
-      "better-sqlite3"
-    ]
-  },
   "keywords": [
     "monzo",
     "actual-budget",
@@ -75,14 +69,14 @@
     "sync",
     "import"
   ],
-  "author": "Alex Crawford <alex@kick.digital>",
+  "author": "VideoScape",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/alexcrawford/actual-monzo.git"
+    "url": "https://github.com/VideoScape/actual-monzo.git"
   },
   "bugs": {
-    "url": "https://github.com/alexcrawford/actual-monzo/issues"
+    "url": "https://github.com/VideoScape/actual-monzo/issues"
   },
-  "homepage": "https://github.com/alexcrawford/actual-monzo#readme"
+  "homepage": "https://github.com/VideoScape/actual-monzo#readme"
 }

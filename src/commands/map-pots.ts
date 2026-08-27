@@ -36,10 +36,10 @@ function resolveDataDirectory(dataDirectory: string): string {
 }
 
 function potAccountName(pot: MonzoPot): string {
-  return `Monzo Pot - ${pot.name.trim()}`;
+  return `Monzo Pot - ${pot.name.trim()}${pot.deleted ? ' (Archived)' : ''}`;
 }
 
-export async function mapOpenPots(config: Config): Promise<Config> {
+export async function mapOpenPots(config: Config, includeDeleted = false): Promise<Config> {
   if (!config.monzo.accessToken) {
     throw new Error('Monzo access token missing. Run: actual-monzo setup');
   }
@@ -52,7 +52,7 @@ export async function mapOpenPots(config: Config): Promise<Config> {
 
   for (const mapping of config.accountMappings) {
     const pots = await client.getPots(mapping.monzoAccountId, config.monzo.accessToken);
-    for (const pot of pots.filter(candidate => !candidate.deleted)) {
+    for (const pot of pots.filter(candidate => includeDeleted || !candidate.deleted)) {
       discovered.set(pot.id, { pot, parentAccountId: mapping.monzoAccountId });
     }
   }
@@ -107,6 +107,7 @@ export async function mapOpenPots(config: Config): Promise<Config> {
           ...prior,
           monzoPotName: pot.name.trim(),
           actualAccountName: priorAccount.name,
+          deleted: Boolean(pot.deleted),
         });
         mappedActualIds.add(priorAccount.id);
         console.log(chalk.green(`  ✓ ${pot.name.trim()} → ${priorAccount.name}`));
@@ -148,6 +149,7 @@ export async function mapOpenPots(config: Config): Promise<Config> {
         monzoAccountId: parentAccountId,
         actualAccountId: actualAccount.id,
         actualAccountName: actualAccount.name,
+        deleted: Boolean(pot.deleted),
       });
     }
 
@@ -168,11 +170,11 @@ export async function mapOpenPots(config: Config): Promise<Config> {
   }
 }
 
-async function mapPotsAction(): Promise<void> {
+async function mapPotsAction(options: { includeDeleted?: boolean }): Promise<void> {
   try {
     const config = await loadConfig();
     console.log(chalk.bold('\n🏺 Monzo Pot Mapping\n'));
-    const updated = await mapOpenPots(config);
+    const updated = await mapOpenPots(config, Boolean(options.includeDeleted));
     await saveConfig(updated);
     const openCount = updated.potMappings?.length ?? 0;
     console.log(chalk.green(`\n✓ Saved ${openCount} Pot mapping(s)`));
@@ -185,4 +187,5 @@ async function mapPotsAction(): Promise<void> {
 
 export const mapPotsCommand = new Command('map-pots')
   .description('Map open Monzo Pots to dedicated Actual Budget accounts')
+  .option('--include-deleted', 'also map deleted Pots needed by full transaction history')
   .action(mapPotsAction);
