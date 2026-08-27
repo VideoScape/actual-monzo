@@ -6,11 +6,9 @@ After=network-online.target docker.service
 
 [Service]
 Type=oneshot
-ExecStart=/usr/local/bin/actual-monzo --no-color import
+ExecStart=/bin/sh -c 'exec /usr/local/bin/actual-monzo --no-color import >>/var/log/actual-monzo/import.log 2>&1'
 TimeoutStartSec=10min
 NoNewPrivileges=true
 PrivateTmp=true
 UMask=0077
 LogsDirectory=actual-monzo
-StandardOutput=append:/var/log/actual-monzo/import.log
-StandardError=append:/var/log/actual-monzo/import.log
