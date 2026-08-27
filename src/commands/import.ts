@@ -23,6 +23,10 @@ interface ImportOptions {
   dryRun: boolean;
 }
 
+export function importSessionHasErrors(session: ImportSession): boolean {
+  return session.failedAccounts.length > 0 || session.potTransfersSkipped > 0;
+}
+
 /**
  * Calculate default start date (30 days ago)
  */
@@ -203,6 +207,11 @@ async function importAction(options: ImportOptions): Promise<void> {
 
     // Display summary
     displayImportSummary(session, accountMappings, options.dryRun);
+
+    if (importSessionHasErrors(session)) {
+      console.error(chalk.red('\nImport completed with errors; see the summary above.'));
+      process.exit(1);
+    }
 
     process.exit(0);
   } catch (error) {
