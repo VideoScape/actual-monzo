@@ -1,0 +1,12 @@
+[Unit]
+Description=Run the Actual Monzo importer daily and after boot
+
+[Timer]
+OnBootSec=15min
+OnCalendar=*-*-* 04:15:00 Europe/London
+RandomizedDelaySec=15min
+Persistent=true
+Unit=actual-monzo.service
+
+[Install]
+WantedBy=timers.target

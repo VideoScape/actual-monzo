@@ -124,6 +124,26 @@ Options:
 - `--account <id>` - Import only this Monzo account ID
 - `--dry-run` - Preview import without making changes
 
+### Scheduled import with systemd
+
+The repository includes a one-shot service and timer for Docker-based installations. It runs
+after boot and daily at 04:15 Europe/London with a randomized delay of up to 15 minutes.
+
+```bash
+sudo install -m 0644 deploy/systemd/actual-monzo.service /etc/systemd/system/
+sudo install -m 0644 deploy/systemd/actual-monzo.timer /etc/systemd/system/
+sudo install -m 0644 deploy/systemd/actual-monzo.logrotate /etc/logrotate.d/actual-monzo
+sudo systemctl daemon-reload
+sudo systemctl enable --now actual-monzo.timer
+```
+
+Inspect the schedule and logs with:
+
+```bash
+systemctl list-timers actual-monzo.timer
+tail -n 100 /var/log/actual-monzo/import.log
+```
+
 ### Map Monzo Pots
 
 After mapping the parent bank accounts, discover every open Pot and create or reuse a dedicated
