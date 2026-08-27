@@ -24,6 +24,19 @@ export interface MonzoAccount {
 }
 
 /**
+ * A Monzo Pot belonging to a current account.
+ */
+export interface MonzoPot {
+  id: string;
+  name: string;
+  balance: number;
+  currency: string;
+  created?: string;
+  updated?: string;
+  deleted?: boolean;
+}
+
+/**
  * Monzo Transaction
  * Represents a single transaction from the Monzo API
  */

@@ -5,7 +5,7 @@
 
 import axios, { AxiosError } from 'axios';
 import type { OAuthTokenResponse, WhoAmIResponse } from '../types/oauth.js';
-import type { MonzoAccount, MonzoTransaction } from '../types/monzo.js';
+import type { MonzoAccount, MonzoPot, MonzoTransaction } from '../types/monzo.js';
 
 const MONZO_API_BASE = 'https://api.monzo.com';
 
@@ -171,6 +171,34 @@ export class MonzoApiClient {
   }
 
   /**
+   * Get every Pot belonging to a Monzo current account.
+   * Deleted Pots are returned because historic transactions can still refer to them.
+   */
+  async getPots(currentAccountId: string, accessToken: string): Promise<MonzoPot[]> {
+    try {
+      const response = await axios.get(`${MONZO_API_BASE}/pots`, {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+        params: {
+          current_account_id: currentAccountId,
+        },
+      });
+
+      return response.data.pots ?? [];
+    } catch (error) {
+      if (axios.isAxiosError(error)) {
+        const axiosError = error as AxiosError;
+        if (axiosError.response?.status === 401) {
+          throw new Error('Invalid or expired access token');
+        }
+        throw new Error(`Failed to fetch Monzo Pots: ${axiosError.message}`);
+      }
+      throw error;
+    }
+  }
+
+  /**
    * Get transactions for a Monzo account within a date range
    * Handles time-based pagination automatically and filters declined transactions
    *
@@ -274,7 +302,13 @@ export class MonzoApiClient {
     }
 
     // Filter out declined transactions (decline_reason is only present when declined)
-    const validTransactions = allTransactions.filter(tx => !tx.decline_reason);
+    const validTransactions = Array.from(
+      new Map(
+        allTransactions
+          .filter(tx => !tx.decline_reason)
+          .map(transaction => [transaction.id, transaction])
+      ).values()
+    );
 
     return validTransactions;
   }

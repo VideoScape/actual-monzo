@@ -18,6 +18,20 @@ export const AccountMappingSchema = z.object({
   actualAccountName: z.string().min(1, 'Actual Budget account name cannot be empty'),
 });
 
+export const PotMappingSchema = z.object({
+  monzoPotId: z.string().regex(/^pot_[a-zA-Z0-9]+$/, 'Monzo Pot ID must match format pot_...'),
+  monzoPotName: z.string().min(1, 'Monzo Pot name cannot be empty'),
+  monzoAccountId: z
+    .string()
+    .regex(/^acc_[a-zA-Z0-9]{16,}$/, 'Monzo account ID must match format acc_XXXXXXXX...'),
+  actualAccountId: z.string().uuid('Actual Budget account ID must be valid UUID'),
+  actualAccountName: z.string().min(1, 'Actual Budget account name cannot be empty'),
+  balanceInitializedAt: z
+    .string()
+    .datetime({ message: 'balanceInitializedAt must be ISO 8601 format' })
+    .optional(),
+});
+
 // Import history removed from config - now stored in logs/
 // Schemas kept for backward compatibility during migration
 
@@ -75,6 +89,8 @@ export const ActualBudgetConfigSchema = z.object({
 
   dataDirectory: z.string().min(1, 'Data directory cannot be empty'),
 
+  budgetId: z.string().min(1, 'Budget ID cannot be empty').optional(),
+
   validatedAt: z.string().datetime({ message: 'validatedAt must be ISO 8601 format' }).optional(),
 });
 
@@ -92,6 +108,8 @@ export const ConfigSchema = z.object({
     .optional(),
 
   accountMappings: z.array(AccountMappingSchema).optional(),
+
+  potMappings: z.array(PotMappingSchema).optional(),
 });
 
 // TypeScript type inference
@@ -99,3 +117,4 @@ export type Config = z.infer<typeof ConfigSchema>;
 export type MonzoConfig = z.infer<typeof MonzoConfigSchema>;
 export type ActualBudgetConfig = z.infer<typeof ActualBudgetConfigSchema>;
 export type AccountMapping = z.infer<typeof AccountMappingSchema>;
+export type PotMapping = z.infer<typeof PotMappingSchema>;

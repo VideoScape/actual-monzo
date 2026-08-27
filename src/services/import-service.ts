@@ -9,10 +9,19 @@ import type {
   ImportSession,
   FailedAccountRecord,
   ActualTransaction,
+  PotMapping,
 } from '../types/import.js';
 import type { Config } from '../utils/config-schema.js';
 import { MonzoApiClient } from './monzo-api-client.js';
-import { transformMonzoToActual } from '../utils/transaction-transform.js';
+import {
+  calculatePotBalanceAdjustment,
+  getPotToPotDeduplicationKey,
+  isPotToPotTransfer,
+  isPotTransfer,
+  transformCurrentToPotTransfer,
+  transformMonzoToActual,
+  transformPotToPotTransfer,
+} from '../utils/transaction-transform.js';
 import { recordImportSession } from '../utils/import-history.js';
 import { saveConfig } from '../utils/config-manager.js';
 import * as actualApi from '@actual-app/api';
@@ -122,12 +131,26 @@ export class ImportService {
       failedAccounts: [],
       totalTransactions: 0,
       declinedFiltered: 0,
+      potTransfers: 0,
+      potToPotTransfers: 0,
+      potTransfersSkipped: 0,
+      potBalancesInitialized: 0,
+      potBalancesPending: 0,
     };
 
-    // Initialize Actual Budget SDK if not dry run
-    if (!dryRun) {
+    let transferPayeeByAccountId = new Map<string, string>();
+
+    if (dryRun) {
+      // A preview does not connect to or mutate Actual. Placeholder payee IDs let
+      // the transformation run while map-pots remains responsible for validation.
+      transferPayeeByAccountId = new Map(
+        (refreshedConfig.potMappings ?? []).map(mapping => [
+          mapping.actualAccountId,
+          `preview-transfer:${mapping.actualAccountId}`,
+        ])
+      );
+    } else {
       try {
-        // Resolve data directory path (expand ~ and relative paths)
         let dataDir = refreshedConfig.actualBudget.dataDirectory;
         if (dataDir.startsWith('~')) {
           dataDir = dataDir.replace('~', process.env.HOME ?? '');
@@ -135,7 +158,6 @@ export class ImportService {
           dataDir = path.resolve(process.cwd(), dataDir);
         }
 
-        // Pre-flight version compatibility check
         const versionCheck = await checkServerCompatibility(refreshedConfig.actualBudget.serverUrl);
         if (!versionCheck.compatible) {
           throw new Error(versionCheck.message);
@@ -144,18 +166,30 @@ export class ImportService {
         await actualApi.init({
           serverURL: refreshedConfig.actualBudget.serverUrl,
           password: refreshedConfig.actualBudget.password,
-          dataDir: dataDir,
+          dataDir,
         });
 
-        // Get and download the budget file
-        const budgets = await actualApi.getBudgets();
-        if (!budgets || budgets.length === 0) {
+        const budgets = (await actualApi.getBudgets()) as Array<{ groupId: string; name?: string }>;
+        const uniqueBudgets = Array.from(new Map(budgets.map(b => [b.groupId, b])).values());
+        if (!uniqueBudgets.length) {
           throw new Error('No budgets found on Actual Budget server');
         }
 
-        // Use first budget's groupId
-        const budgetId = budgets[0].groupId;
-        await actualApi.downloadBudget(budgetId);
+        const budget =
+          uniqueBudgets.find(
+            candidate => candidate.groupId === refreshedConfig.actualBudget.budgetId
+          ) ?? uniqueBudgets[0];
+        await actualApi.downloadBudget(budget.groupId);
+
+        const payees = (await actualApi.getPayees()) as Array<{
+          id: string;
+          transfer_acct?: string | null;
+        }>;
+        transferPayeeByAccountId = new Map(
+          payees
+            .filter(payee => Boolean(payee.transfer_acct))
+            .map(payee => [payee.transfer_acct!, payee.id])
+        );
       } catch (error) {
         throw new Error(
           `Failed to initialize Actual Budget: ${error instanceof Error ? error.message : 'Unknown error'}`
@@ -164,6 +198,25 @@ export class ImportService {
     }
 
     try {
+      const potMappings = refreshedConfig.potMappings ?? [];
+      const potMappingById = new Map<string, PotMapping>(
+        potMappings.map(mapping => [mapping.monzoPotId, mapping])
+      );
+      const currentPotBalanceById = new Map<string, number>();
+
+      if (potMappings.length > 0) {
+        const parentAccountIds = new Set(potMappings.map(mapping => mapping.monzoAccountId));
+        for (const parentAccountId of parentAccountIds) {
+          const pots = await this.monzoClient.getPots(
+            parentAccountId,
+            refreshedConfig.monzo.accessToken!
+          );
+          for (const pot of pots) {
+            currentPotBalanceById.set(pot.id, pot.balance);
+          }
+        }
+      }
+
       // Process each account mapping
       for (const mapping of mappings) {
         try {
@@ -182,31 +235,139 @@ export class ImportService {
             refreshedConfig.monzo.accessToken!
           );
 
-          // Transform to Actual Budget format
-          // Note: Actual Budget handles duplicate detection automatically via imported_id
-          const allTransactions: ActualTransaction[] = monzoTransactions.map(tx =>
-            transformMonzoToActual(tx, mapping)
-          );
+          const transactionsByActualAccount = new Map<string, ActualTransaction[]>();
+          const potToPotTransactionsByActualAccount = new Map<string, ActualTransaction[]>();
+          const seenPotToPotTransfers = new Set<string>();
+          const appendTransaction = (transaction: ActualTransaction): void => {
+            const transactions = transactionsByActualAccount.get(transaction.account) ?? [];
+            transactions.push(transaction);
+            transactionsByActualAccount.set(transaction.account, transactions);
+          };
+          const appendPotToPotTransaction = (transaction: ActualTransaction): void => {
+            const transactions = potToPotTransactionsByActualAccount.get(transaction.account) ?? [];
+            transactions.push(transaction);
+            potToPotTransactionsByActualAccount.set(transaction.account, transactions);
+          };
 
-          // Filter out zero-amount transactions - they don't represent actual money movement
-          // (often authorization holds or system entries)
-          const actualTransactions = allTransactions.filter(tx => tx.amount !== 0);
+          for (const monzoTransaction of monzoTransactions) {
+            if (monzoTransaction.amount === 0) {
+              continue;
+            }
+
+            if (!isPotTransfer(monzoTransaction)) {
+              appendTransaction(transformMonzoToActual(monzoTransaction, mapping));
+              continue;
+            }
+
+            const destinationPotId = monzoTransaction.metadata?.pot_id;
+            const destinationPot = destinationPotId
+              ? potMappingById.get(destinationPotId)
+              : undefined;
+
+            if (isPotToPotTransfer(monzoTransaction)) {
+              const transferKey = getPotToPotDeduplicationKey(monzoTransaction);
+              if (seenPotToPotTransfers.has(transferKey)) {
+                continue;
+              }
+              seenPotToPotTransfers.add(transferKey);
+
+              const sourcePotId = monzoTransaction.metadata?.source_pot_id;
+              const sourcePot = sourcePotId ? potMappingById.get(sourcePotId) : undefined;
+              const destinationPayee = destinationPot
+                ? transferPayeeByAccountId.get(destinationPot.actualAccountId)
+                : undefined;
+
+              if (!sourcePot || !destinationPot || !destinationPayee) {
+                session.potTransfersSkipped++;
+                continue;
+              }
+
+              appendPotToPotTransaction(
+                transformPotToPotTransfer(
+                  monzoTransaction,
+                  sourcePot,
+                  destinationPot,
+                  destinationPayee
+                )
+              );
+              session.potTransfers++;
+              session.potToPotTransfers++;
+              continue;
+            }
+
+            const destinationPayee = destinationPot
+              ? transferPayeeByAccountId.get(destinationPot.actualAccountId)
+              : undefined;
+            if (!destinationPot || !destinationPayee) {
+              session.potTransfersSkipped++;
+              continue;
+            }
+
+            appendTransaction(
+              transformCurrentToPotTransfer(
+                monzoTransaction,
+                mapping,
+                destinationPot,
+                destinationPayee
+              )
+            );
+            session.potTransfers++;
+          }
+
+          const actualTransactionCount =
+            Array.from(transactionsByActualAccount.values()).reduce(
+              (count, transactions) => count + transactions.length,
+              0
+            ) +
+            Array.from(potToPotTransactionsByActualAccount.values()).reduce(
+              (count, transactions) => count + transactions.length,
+              0
+            );
 
           if (spinner) {
             const verb = dryRun ? 'Processing' : 'Importing';
-            spinner.text = `${verb} ${mapping.monzoAccountName} (${actualTransactions.length} transactions)`;
+            spinner.text = `${verb} ${mapping.monzoAccountName} (${actualTransactionCount} transactions)`;
           }
 
           // Import to Actual Budget (unless dry run)
-          if (!dryRun && actualTransactions.length > 0) {
-            const result = await actualApi.importTransactions(
-              mapping.actualAccountId,
-              actualTransactions
-            );
-
-            session.totalTransactions += result.added.length;
+          if (!dryRun) {
+            for (const [actualAccountId, actualTransactions] of transactionsByActualAccount) {
+              if (!actualTransactions.length) {
+                continue;
+              }
+              const result = await actualApi.importTransactions(
+                actualAccountId,
+                actualTransactions
+              );
+              session.totalTransactions += result.added.length;
+            }
+            for (const [
+              actualAccountId,
+              potToPotTransactions,
+            ] of potToPotTransactionsByActualAccount) {
+              const existing = (await actualApi.getTransactions(
+                actualAccountId,
+                dateRange.start.toISOString().split('T')[0],
+                dateRange.end.toISOString().split('T')[0]
+              )) as ActualTransaction[];
+              const existingImportIds = new Set(
+                existing.map(transaction => transaction.imported_id)
+              );
+              const newTransactions = potToPotTransactions.filter(
+                transaction => !existingImportIds.has(transaction.imported_id)
+              );
+              if (!newTransactions.length) {
+                continue;
+              }
+              await actualApi.addTransactions(
+                actualAccountId,
+                newTransactions.map(({ account: _account, ...transaction }) => transaction),
+                { runTransfers: true }
+              );
+              session.totalTransactions += newTransactions.length;
+            }
           } else if (dryRun) {
-            session.totalTransactions += actualTransactions.length;
+            session.totalTransactions += actualTransactionCount;
           }
 
           session.successfulAccounts.push(mapping.monzoAccountId);
@@ -220,6 +381,53 @@ export class ImportService {
           };
 
           session.failedAccounts.push(failureRecord);
+        }
+      }
+
+      const uninitializedPots = potMappings.filter(mapping => !mapping.balanceInitializedAt);
+      if (dryRun) {
+        session.potBalancesPending = uninitializedPots.length;
+      } else {
+        let configChanged = false;
+        const completedParentAccounts = new Set(session.successfulAccounts);
+
+        for (const potMapping of uninitializedPots) {
+          if (!completedParentAccounts.has(potMapping.monzoAccountId)) {
+            continue;
+          }
+          const monzoBalance = currentPotBalanceById.get(potMapping.monzoPotId);
+          if (monzoBalance === undefined) {
+            continue;
+          }
+
+          const actualBalance = (await actualApi.getAccountBalance(
+            potMapping.actualAccountId
+          )) as number;
+          const adjustment = calculatePotBalanceAdjustment(monzoBalance, actualBalance);
+
+          if (adjustment !== 0) {
+            const result = await actualApi.importTransactions(potMapping.actualAccountId, [
+              {
+                account: potMapping.actualAccountId,
+                date: dateRange.start.toISOString().split('T')[0],
+                amount: adjustment,
+                payee_name: 'Monzo Pot opening balance',
+                notes: `One-time balance reconciliation for Monzo Pot ${potMapping.monzoPotName}`,
+                imported_id: `actual-monzo-pot-opening-${potMapping.monzoPotId}`,
+                cleared: true,
+              },
+            ]);
+            session.totalTransactions += result.added.length;
+          }
+
+          potMapping.balanceInitializedAt = new Date().toISOString();
+          session.potBalancesInitialized++;
+          configChanged = true;
+        }
+
+        if (configChanged) {
+          refreshedConfig.potMappings = potMappings;
+          await saveConfig(refreshedConfig);
         }
       }
 

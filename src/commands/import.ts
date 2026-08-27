@@ -143,6 +143,22 @@ function displayImportSummary(
   if (session.declinedFiltered > 0) {
     console.log(`Filtered: ${session.declinedFiltered} declined transaction(s)`);
   }
+  if (session.potTransfers > 0) {
+    console.log(`Pot transfers: ${session.potTransfers} (${session.potToPotTransfers} Pot-to-Pot)`);
+  }
+  if (session.potTransfersSkipped > 0) {
+    console.log(
+      chalk.yellow(
+        `Skipped: ${session.potTransfersSkipped} unmapped Pot movement(s); run actual-monzo map-pots`
+      )
+    );
+  }
+  if (session.potBalancesInitialized > 0) {
+    console.log(`Pot balances reconciled: ${session.potBalancesInitialized} account(s)`);
+  }
+  if (session.potBalancesPending > 0) {
+    console.log(`Pot balances to reconcile on import: ${session.potBalancesPending} account(s)`);
+  }
 }
 
 /**

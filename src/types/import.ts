@@ -12,6 +12,7 @@ export interface ActualTransaction {
   account: string;
   date: string;
   amount: number;
+  payee?: string;
   payee_name?: string;
   notes?: string;
   imported_id?: string;
@@ -26,6 +27,18 @@ export interface AccountMapping {
   monzoAccountName: string;
   actualAccountId: string;
   actualAccountName: string;
+}
+
+/**
+ * Mapping between a Monzo Pot and its dedicated Actual Budget account.
+ */
+export interface PotMapping {
+  monzoPotId: string;
+  monzoPotName: string;
+  monzoAccountId: string;
+  actualAccountId: string;
+  actualAccountName: string;
+  balanceInitializedAt?: string;
 }
 
 /**
@@ -57,4 +70,9 @@ export interface ImportSession {
   failedAccounts: FailedAccountRecord[];
   totalTransactions: number;
   declinedFiltered: number;
+  potTransfers: number;
+  potToPotTransfers: number;
+  potTransfersSkipped: number;
+  potBalancesInitialized: number;
+  potBalancesPending: number;
 }

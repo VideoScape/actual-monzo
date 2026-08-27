@@ -1,12 +1,19 @@
 # actual-monzo
 
-Automated synchronization between Monzo bank accounts and Actual Budget.
+Automated synchronization between Monzo bank accounts, Monzo Pots, and Actual Budget.
+
+This is the VideoScape-maintained fork. It is developed independently and adds first-class
+Monzo Pot accounts, linked Current-to-Pot transfers, linked Pot-to-Pot transfers, and one-time
+Pot balance reconciliation.
 
 ## Features
 
 - 🔐 **Secure OAuth Integration** - Connect to Monzo using official OAuth 2.0 flow
 - 💰 **Transaction Import** - Sync Monzo transactions to Actual Budget
 - 🗺️ **Account Mapping** - Configure which Monzo accounts sync to which Actual Budget accounts
+- 🏺 **First-class Monzo Pots** - Create a dedicated on-budget Actual account for every open Pot
+- 🔁 **Linked Transfers** - Preserve Current ↔ Pot and Pot ↔ Pot movements as Actual transfers
+- ⚖️ **Pot Balance Reconciliation** - Initialize new Pot accounts to their live Monzo balance
 - 💾 **Persistent Configuration** - Global config stored in `~/.actual-monzo/` with secure permissions (chmod 600)
 - 🌍 **Global Installation** - Install once, run from anywhere
 - 📋 **Import History** - Automatic logging of all imports in `~/.actual-monzo/logs/`
@@ -31,21 +38,29 @@ Automated synchronization between Monzo bank accounts and Actual Budget.
 
 ### Installation
 
-#### Option 1: Global Installation (Recommended)
+#### Install this fork from source
 
 ```bash
-npm install -g actual-monzo
+git clone https://github.com/VideoScape/actual-monzo.git
+cd actual-monzo
+pnpm install
+pnpm build
+pnpm link --global
 
-# Then use from anywhere
 actual-monzo setup
+actual-monzo map-accounts
+actual-monzo map-pots
 actual-monzo import
 ```
 
-#### Option 2: Local Development
+Do not use `npm install -g actual-monzo` if you need Pot support; that installs the upstream
+package rather than this fork.
+
+#### Local development
 
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/actual-monzo.git
+git clone https://github.com/VideoScape/actual-monzo.git
 cd actual-monzo
 
 # Install dependencies
@@ -67,6 +82,7 @@ actual-monzo setup
 ```
 
 This will:
+
 1. Collect your Monzo OAuth credentials (Client ID & Secret)
 2. Open a browser for Monzo authorization
 3. Collect your Actual Budget server details
@@ -102,10 +118,23 @@ actual-monzo import
 ```
 
 Options:
+
 - `--start <date>` - Import transactions from this date (YYYY-MM-DD, default: 30 days ago)
 - `--end <date>` - Import transactions until this date (YYYY-MM-DD, default: today)
 - `--account <id>` - Import only this Monzo account ID
 - `--dry-run` - Preview import without making changes
+
+### Map Monzo Pots
+
+After mapping the parent bank accounts, discover every open Pot and create or reuse a dedicated
+on-budget Actual account:
+
+```bash
+actual-monzo map-pots
+```
+
+Run `map-pots` again after creating a new Pot in Monzo. Historical mappings are retained so an
+old Pot movement is never silently converted into income or spending.
 
 ## Configuration
 
@@ -122,30 +151,40 @@ After setup, configuration files are stored in `~/.actual-monzo/`:
 
 ```yaml
 monzo:
-  clientId: "oauth2client_..."
-  clientSecret: "mnzconf..."
-  accessToken: "access_token_..."
-  refreshToken: "refresh_token_..."
-  tokenExpiresAt: "2025-10-01T18:00:00.000Z"
+  clientId: 'oauth2client_...'
+  clientSecret: 'mnzconf...'
+  accessToken: 'access_token_...'
+  refreshToken: 'refresh_token_...'
+  tokenExpiresAt: '2025-10-01T18:00:00.000Z'
 
 actualBudget:
-  serverUrl: "http://localhost:5006"
-  password: "your-password"
-  dataDirectory: "/Users/you/.actual"
-  validatedAt: "2025-10-01T12:05:00.000Z"
+  serverUrl: 'http://localhost:5006'
+  password: 'your-password'
+  dataDirectory: '/Users/you/.actual'
+  validatedAt: '2025-10-01T12:05:00.000Z'
 
 accountMappings:
-  - monzoAccountId: "acc_..."
-    monzoAccountName: "Current Account"
-    actualAccountId: "..."
-    actualAccountName: "Checking"
+  - monzoAccountId: 'acc_...'
+    monzoAccountName: 'Current Account'
+    actualAccountId: '...'
+    actualAccountName: 'Checking'
 
-setupCompletedAt: "2025-10-01T12:05:00.000Z"
+potMappings:
+  - monzoPotId: 'pot_...'
+    monzoPotName: 'Bills'
+    monzoAccountId: 'acc_...'
+    actualAccountId: '...'
+    actualAccountName: 'Monzo Pot - Bills'
+    balanceInitializedAt: '2026-08-27T01:00:00.000Z'
+
+setupCompletedAt: '2025-10-01T12:05:00.000Z'
 ```
 
 **Security:**
+
 - Config file is automatically set to `chmod 600` (owner read/write only)
 - Stored in your home directory, isolated from project code
+- The file contains Monzo OAuth credentials and the Actual server password; protect host backups too
 - Never commit or share your config file
 
 ## Development
@@ -155,7 +194,7 @@ setupCompletedAt: "2025-10-01T12:05:00.000Z"
 ```
 actual-monzo/
 ├── src/
-│   ├── commands/       # CLI commands (setup, import, map-accounts)
+│   ├── commands/       # CLI commands (setup, import, map-accounts, map-pots)
 │   ├── services/       # Business logic (OAuth, API clients)
 │   ├── types/          # TypeScript type definitions
 │   └── utils/          # Utilities (config, OAuth server, browser)
@@ -195,6 +234,7 @@ pnpm vitest run tests/unit/
 ```
 
 **Test Coverage:**
+
 - Contract tests (API contracts)
 - Integration tests (end-to-end flows)
 - Unit tests (individual functions)
@@ -301,6 +341,7 @@ npm config get prefix
 ### Browser Doesn't Open (OAuth)
 
 If running in headless environment or browser fails to open:
+
 - The CLI displays a clickable URL
 - Copy and paste into browser manually
 - OAuth callback still works on localhost
@@ -320,6 +361,7 @@ curl http://localhost:5006
 ### OAuth Token Expired
 
 Monzo tokens expire after 6 hours. If you see authentication errors:
+
 - The CLI will auto-refresh tokens (when implemented)
 - For now, re-run setup: `actual-monzo setup`
 
