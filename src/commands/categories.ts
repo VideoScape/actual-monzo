@@ -9,6 +9,7 @@ import { suppressConsole } from '../utils/cli-utils.js';
 import {
   buildCategoryMapping,
   getMonzoCategoryFromNotes,
+  isImporterOpeningBalance,
   MONZO_TRANSACTION_CATEGORIES,
 } from '../utils/category-mapping.js';
 import type { CategoryMapping } from '../types/import.js';
@@ -110,6 +111,32 @@ async function mapCategoriesAction(): Promise<void> {
     }
 
     config.categoryMappings = mappings;
+    const openingChoices = categories.map(category => ({
+      name: category.name,
+      value: category.id,
+    }));
+    const suggestedOpeningId =
+      config.openingBalanceCategory?.actualCategoryId ??
+      categories.find(category => category.name === 'Starting Balances')?.id;
+    const openingDefault = Math.max(
+      0,
+      openingChoices.findIndex(choice => choice.value === suggestedOpeningId)
+    );
+    const { openingCategoryId } = await inquirer.prompt<{ openingCategoryId: string }>([
+      {
+        type: 'list',
+        name: 'openingCategoryId',
+        message: 'Importer opening-balance adjustments →',
+        choices: openingChoices,
+        default: openingDefault,
+      },
+    ]);
+    const openingCategory = categories.find(category => category.id === openingCategoryId);
+    if (!openingCategory) throw new Error('Selected opening-balance category no longer exists');
+    config.openingBalanceCategory = {
+      actualCategoryId: openingCategory.id,
+      actualCategoryName: openingCategory.name,
+    };
     await saveConfig(config);
     console.log(chalk.green(`\n✓ Saved ${mappings.length} category mapping(s)`));
     console.log(chalk.dim('Run actual-monzo backfill-categories to categorize existing imports.'));
@@ -145,13 +172,17 @@ async function backfillCategoriesAction(options: {
         throw new Error(`Mapped Actual category no longer exists: ${actualCategoryId}`);
       }
     }
+    const openingBalanceCategoryId = config.openingBalanceCategory?.actualCategoryId;
+    if (openingBalanceCategoryId && !validCategoryIds.has(openingBalanceCategoryId)) {
+      throw new Error(`Mapped Actual category no longer exists: ${openingBalanceCategoryId}`);
+    }
 
     let scanned = 0;
     let matched = 0;
     let changed = 0;
     const updates: Array<{ id: string; category: string }> = [];
 
-    for (const mapping of config.accountMappings) {
+    for (const mapping of [...config.accountMappings, ...(config.potMappings ?? [])]) {
       const transactions = (await actualApi.getTransactions(
         mapping.actualAccountId,
         '2000-01-01',
@@ -160,7 +191,11 @@ async function backfillCategoriesAction(options: {
       for (const transaction of transactions) {
         scanned++;
         const monzoCategory = getMonzoCategoryFromNotes(transaction.notes);
-        const actualCategoryId = monzoCategory ? categoryMapping.get(monzoCategory) : undefined;
+        const actualCategoryId = monzoCategory
+          ? categoryMapping.get(monzoCategory)
+          : isImporterOpeningBalance(transaction.notes)
+            ? openingBalanceCategoryId
+            : undefined;
         if (!actualCategoryId) continue;
         matched++;
         if (transaction.category === actualCategoryId) continue;

@@ -205,7 +205,8 @@ actual-monzo backfill-categories
 ```
 
 The backfill only fills blank categories unless `--overwrite` is explicitly supplied. Pot
-transfers and Monzo's generic `transfers` category are deliberately left categoryless.
+transfers and Monzo's generic `transfers` category are deliberately left categoryless. Importer
+reconciliation entries can be mapped separately to Actual's `Starting Balances` category.
 
 ## Configuration
 
@@ -252,6 +253,10 @@ categoryMappings:
   - monzoCategory: groceries
     actualCategoryId: '...'
     actualCategoryName: Food
+
+openingBalanceCategory:
+  actualCategoryId: '...'
+  actualCategoryName: Starting Balances
 
 setupCompletedAt: '2025-10-01T12:05:00.000Z'
 ```

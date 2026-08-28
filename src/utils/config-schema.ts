@@ -39,6 +39,11 @@ export const CategoryMappingSchema = z.object({
   actualCategoryName: z.string().min(1, 'Actual Budget category name cannot be empty'),
 });
 
+export const OpeningBalanceCategorySchema = z.object({
+  actualCategoryId: z.string().uuid('Actual Budget category ID must be a valid UUID'),
+  actualCategoryName: z.string().min(1, 'Actual Budget category name cannot be empty'),
+});
+
 // Import history removed from config - now stored in logs/
 // Schemas kept for backward compatibility during migration
 
@@ -119,6 +124,8 @@ export const ConfigSchema = z.object({
   potMappings: z.array(PotMappingSchema).optional(),
 
   categoryMappings: z.array(CategoryMappingSchema).optional(),
+
+  openingBalanceCategory: OpeningBalanceCategorySchema.optional(),
 });
 
 // TypeScript type inference
@@ -128,3 +135,4 @@ export type ActualBudgetConfig = z.infer<typeof ActualBudgetConfigSchema>;
 export type AccountMapping = z.infer<typeof AccountMappingSchema>;
 export type PotMapping = z.infer<typeof PotMappingSchema>;
 export type CategoryMapping = z.infer<typeof CategoryMappingSchema>;
+export type OpeningBalanceCategory = z.infer<typeof OpeningBalanceCategorySchema>;

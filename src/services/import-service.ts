@@ -457,6 +457,9 @@ export class ImportService {
                 amount: adjustment,
                 payee_name: 'Monzo Pot opening balance',
                 notes: `One-time balance reconciliation for Monzo Pot ${potMapping.monzoPotName}`,
+                ...(refreshedConfig.openingBalanceCategory
+                  ? { category: refreshedConfig.openingBalanceCategory.actualCategoryId }
+                  : {}),
                 imported_id: `actual-monzo-pot-opening-${potMapping.monzoPotId}`,
                 cleared: true,
               },

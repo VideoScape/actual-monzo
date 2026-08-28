@@ -31,3 +31,9 @@ export function getMonzoCategoryFromNotes(notes?: string | null): string | undef
   const match = notes?.match(/^Monzo:\s*([^|]+?)\s*\|\s*ID:/);
   return match?.[1]?.trim();
 }
+
+export function isImporterOpeningBalance(notes?: string | null): boolean {
+  return ['One-time balance reconciliation', 'One-time balance adjustment'].some(prefix =>
+    notes?.startsWith(prefix)
+  );
+}

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   buildCategoryMapping,
   getMonzoCategoryFromNotes,
+  isImporterOpeningBalance,
   MONZO_TRANSACTION_CATEGORIES,
 } from '../../src/utils/category-mapping.js';
 import { transformMonzoToActual } from '../../src/utils/transaction-transform.js';
@@ -59,5 +60,15 @@ describe('Monzo category mapping', () => {
     ]);
     expect(mappings.get('groceries')).toBe('541836f1-e756-4473-a5d0-6c1d3f06c7fa');
     expect(mappings.get('transfers')).toBeUndefined();
+  });
+
+  it('recognises importer reconciliation entries as opening balances', () => {
+    expect(isImporterOpeningBalance('One-time balance reconciliation for Monzo Pot Bills')).toBe(
+      true
+    );
+    expect(
+      isImporterOpeningBalance('One-time balance adjustment after importing available history')
+    ).toBe(true);
+    expect(isImporterOpeningBalance('Monzo: transfers | ID: tx_transfer')).toBe(false);
   });
 });
