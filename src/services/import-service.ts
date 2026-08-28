@@ -31,6 +31,7 @@ import type { Ora } from 'ora';
 import { checkServerCompatibility } from '../utils/actual-version-check.js';
 import { getMonzoAccountDisplayName } from '../utils/account-names.js';
 import { validateActualMappings } from '../utils/mapping-validation.js';
+import { buildCategoryMapping } from '../utils/category-mapping.js';
 
 export class ImportService {
   private readonly monzoClient: MonzoApiClient;
@@ -231,6 +232,7 @@ export class ImportService {
         potMappings.map(mapping => [mapping.monzoPotId, mapping])
       );
       const currentPotBalanceById = new Map<string, number>();
+      const categoryMapping = buildCategoryMapping(refreshedConfig.categoryMappings);
 
       if (potMappings.length > 0) {
         const parentAccountIds = new Set(potMappings.map(mapping => mapping.monzoAccountId));
@@ -285,7 +287,13 @@ export class ImportService {
             }
 
             if (!isPotTransfer(monzoTransaction)) {
-              appendTransaction(transformMonzoToActual(monzoTransaction, mapping));
+              appendTransaction(
+                transformMonzoToActual(
+                  monzoTransaction,
+                  mapping,
+                  categoryMapping.get(monzoTransaction.category)
+                )
+              );
               continue;
             }
 

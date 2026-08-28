@@ -33,6 +33,12 @@ export const PotMappingSchema = z.object({
     .optional(),
 });
 
+export const CategoryMappingSchema = z.object({
+  monzoCategory: z.string().min(1, 'Monzo category cannot be empty'),
+  actualCategoryId: z.string().uuid('Actual Budget category ID must be a valid UUID'),
+  actualCategoryName: z.string().min(1, 'Actual Budget category name cannot be empty'),
+});
+
 // Import history removed from config - now stored in logs/
 // Schemas kept for backward compatibility during migration
 
@@ -111,6 +117,8 @@ export const ConfigSchema = z.object({
   accountMappings: z.array(AccountMappingSchema).optional(),
 
   potMappings: z.array(PotMappingSchema).optional(),
+
+  categoryMappings: z.array(CategoryMappingSchema).optional(),
 });
 
 // TypeScript type inference
@@ -119,3 +127,4 @@ export type MonzoConfig = z.infer<typeof MonzoConfigSchema>;
 export type ActualBudgetConfig = z.infer<typeof ActualBudgetConfigSchema>;
 export type AccountMapping = z.infer<typeof AccountMappingSchema>;
 export type PotMapping = z.infer<typeof PotMappingSchema>;
+export type CategoryMapping = z.infer<typeof CategoryMappingSchema>;

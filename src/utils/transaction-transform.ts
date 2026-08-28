@@ -20,7 +20,8 @@ import { formatDate } from './date-utils.js';
  */
 export function transformMonzoToActual(
   monzoTx: MonzoTransaction,
-  mapping: AccountMapping
+  mapping: AccountMapping,
+  actualCategoryId?: string
 ): ActualTransaction {
   // Extract date: use settled if available, otherwise created
   const date = formatDate(monzoTx.settled || monzoTx.created);
@@ -40,6 +41,7 @@ export function transformMonzoToActual(
     amount: monzoTx.amount, // Already in pence/cents
     payee_name,
     notes,
+    ...(actualCategoryId ? { category: actualCategoryId } : {}),
     imported_id: monzoTx.id,
     cleared,
   };

@@ -17,6 +17,7 @@ post-authentication access window and import that secure snapshot later.
 - ⚖️ **Pot Balance Reconciliation** - Initialize new Pot accounts to their live Monzo balance
 - 🗄️ **Complete History Bootstrap** - Capture all Monzo history immediately after reauthentication
 - 🏺 **Archived Pot History** - Preserve movements involving deleted Pots during a full import
+- 🏷️ **Category Mapping** - Map Monzo categories during import and safely backfill historical transactions
 - 💾 **Persistent Configuration** - Global config stored in `~/.actual-monzo/` with secure permissions (chmod 600)
 - 🌍 **Global Installation** - Install once, run from anywhere
 - 📋 **Import History** - Automatic logging of all imports in `~/.actual-monzo/logs/`
@@ -187,6 +188,25 @@ actual-monzo map-pots --include-deleted
 Run `map-pots` again after creating a new Pot in Monzo. Historical mappings are retained so an
 old Pot movement is never silently converted into income or spending.
 
+### Map and backfill categories
+
+Map Monzo's spending categories to categories already present in Actual Budget:
+
+```bash
+actual-monzo map-categories
+```
+
+Future imports use those mappings immediately. Existing imports preserve their original Monzo
+category in the transaction notes and can be categorized retroactively:
+
+```bash
+actual-monzo backfill-categories --dry-run
+actual-monzo backfill-categories
+```
+
+The backfill only fills blank categories unless `--overwrite` is explicitly supplied. Pot
+transfers and Monzo's generic `transfers` category are deliberately left categoryless.
+
 ## Configuration
 
 After setup, configuration files are stored in `~/.actual-monzo/`:
@@ -227,6 +247,11 @@ potMappings:
     actualAccountId: '...'
     actualAccountName: 'Monzo Pot - Bills'
     balanceInitializedAt: '2026-08-27T01:00:00.000Z'
+
+categoryMappings:
+  - monzoCategory: groceries
+    actualCategoryId: '...'
+    actualCategoryName: Food
 
 setupCompletedAt: '2025-10-01T12:05:00.000Z'
 ```

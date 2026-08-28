@@ -15,6 +15,7 @@ export interface ActualTransaction {
   payee?: string;
   payee_name?: string;
   notes?: string;
+  category?: string;
   imported_id?: string;
   cleared?: boolean;
 }
@@ -40,6 +41,13 @@ export interface PotMapping {
   actualAccountName: string;
   deleted?: boolean;
   balanceInitializedAt?: string;
+}
+
+/** Mapping from a Monzo transaction category to an Actual Budget category. */
+export interface CategoryMapping {
+  monzoCategory: string;
+  actualCategoryId: string;
+  actualCategoryName: string;
 }
 
 /**
