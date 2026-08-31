@@ -24,6 +24,7 @@ interface ActualCategory {
   name: string;
   group?: string;
   hidden?: boolean;
+  is_income?: boolean;
 }
 
 interface ActualTransaction {
@@ -72,7 +73,8 @@ async function mapCategoriesAction(): Promise<void> {
   try {
     const config = await loadConfig();
     console.log(chalk.bold('\n🏷️  Monzo Category Mapping\n'));
-    const categories = (await openConfiguredBudget(config)).filter(category => !category.hidden);
+    const allCategories = await openConfiguredBudget(config);
+    const categories = allCategories.filter(category => !category.hidden);
     budgetOpened = true;
     if (!categories.length) throw new Error('No Actual Budget categories found');
 
@@ -111,13 +113,16 @@ async function mapCategoriesAction(): Promise<void> {
     }
 
     config.categoryMappings = mappings;
-    const openingChoices = categories.map(category => ({
-      name: category.name,
+    const openingCategories = allCategories;
+    const openingChoices = openingCategories.map(category => ({
+      name: `${category.name}${category.hidden ? ' (hidden)' : ''}`,
       value: category.id,
     }));
     const suggestedOpeningId =
       config.openingBalanceCategory?.actualCategoryId ??
-      categories.find(category => category.name === 'Starting Balances')?.id;
+      openingCategories.find(category => category.name === 'Budget Reset' && !category.is_income)
+        ?.id ??
+      openingCategories.find(category => category.name === 'Starting Balances')?.id;
     const openingDefault = Math.max(
       0,
       openingChoices.findIndex(choice => choice.value === suggestedOpeningId)
@@ -131,7 +136,7 @@ async function mapCategoriesAction(): Promise<void> {
         default: openingDefault,
       },
     ]);
-    const openingCategory = categories.find(category => category.id === openingCategoryId);
+    const openingCategory = openingCategories.find(category => category.id === openingCategoryId);
     if (!openingCategory) throw new Error('Selected opening-balance category no longer exists');
     config.openingBalanceCategory = {
       actualCategoryId: openingCategory.id,

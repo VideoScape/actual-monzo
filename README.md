@@ -205,8 +205,18 @@ actual-monzo backfill-categories
 ```
 
 The backfill only fills blank categories unless `--overwrite` is explicitly supplied. Pot
-transfers and Monzo's generic `transfers` category are deliberately left categoryless. Importer
-reconciliation entries can be mapped separately to Actual's `Starting Balances` category.
+transfers and Monzo's generic `transfers` category are deliberately left categoryless for review.
+
+For importer reconciliation entries, create a hidden expense category named `Budget Reset` and
+select it when prompted. Do not use Actual's income-type `Starting Balances` category for negative
+reconciliation adjustments: doing so can create a large negative `To Budget` amount that rolls
+through every later month. Hidden categories are offered for this prompt, and `Budget Reset` is
+preferred automatically when it exists.
+
+When importing several years of history into an envelope budget, follow Actual's restart guidance
+and clear the historical category balances before beginning the current budget. The transaction
+history remains available for reports; the reset only prevents old unbudgeted spending from
+rolling into the current month's available funds.
 
 ## Configuration
 
@@ -256,7 +266,7 @@ categoryMappings:
 
 openingBalanceCategory:
   actualCategoryId: '...'
-  actualCategoryName: Starting Balances
+  actualCategoryName: Budget Reset
 
 setupCompletedAt: '2025-10-01T12:05:00.000Z'
 ```

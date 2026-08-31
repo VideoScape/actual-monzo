@@ -1,6 +1,6 @@
 {
   "name": "actual-monzo",
-  "version": "0.6.0-pot.6",
+  "version": "0.6.0-pot.7",
   "description": "CLI tool to import Monzo transactions into Actual Budget",
   "type": "module",
   "main": "dist/index.js",
